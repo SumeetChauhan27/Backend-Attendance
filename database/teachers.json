@@ -1,0 +1,44 @@
+[
+  {
+    "id": "admin",
+    "role": "SUPER_ADMIN",
+    "password": "admin123",
+    "name": "Teacher",
+    "roll": "",
+    "classId": "",
+    "approved": true,
+    "department": "Administration"
+  },
+  {
+    "id": "teacher1",
+    "role": "TEACHER",
+    "password": "teacher123",
+    "name": "Teacher",
+    "roll": "",
+    "classId": "",
+    "department": "General",
+    "approved": true
+  },
+  {
+    "id": "3VwIz97Sm2",
+    "name": "harnam",
+    "email": "harnam@ternaengg.ac.in",
+    "password": "123",
+    "department": "CSE",
+    "role": "TEACHER",
+    "approved": false,
+    "roll": "",
+    "classId": ""
+  },
+  {
+    "id": "w4bp7sQIG_",
+    "name": "abc",
+    "email": "ab@efg2",
+    "password": "12",
+    "department": "cse",
+    "role": "TEACHER",
+    "approved": false,
+    "roll": "",
+    "classId": ""
+  }
+]
