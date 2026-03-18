@@ -67,8 +67,12 @@ const readQrSessions = async () => {
   return rows.map((row) => ({
     ...row,
     attendance: Array.isArray(row.attendance) ? row.attendance : [],
+    classroomLat: row.classroomLat ?? null,
+    classroomLng: row.classroomLng ?? null,
   }))
 }
+
+const readAttendanceLogs = async () => getRows('AttendanceLogs')
 
 const getAllUsers = async () => {
   const [teachers, students] = await Promise.all([readTeachers(), readStudents()])
@@ -496,6 +500,8 @@ export const createQrSession = async (payload) => {
   await appendRow('QrSessions', {
     ...payload,
     attendance: payload.attendance || [],
+    classroomLat: payload.classroomLat ?? null,
+    classroomLng: payload.classroomLng ?? null,
   })
   return payload
 }
@@ -512,4 +518,18 @@ export const saveQrSession = async (session) => {
 
   await updateRow('QrSessions', index, session)
   return session
+}
+
+// --- Attendance Logs ---
+
+export const appendAttendanceLog = async (payload) => {
+  await appendRow('AttendanceLogs', payload)
+  return payload
+}
+
+export const getAttendanceLogs = async (sessionId, studentId) => {
+  const logs = await readAttendanceLogs()
+  return logs.filter(
+    (log) => log.sessionId === sessionId && log.studentId === studentId,
+  )
 }

@@ -20,7 +20,8 @@ const TABS = {
   Classes: ['id', 'name'],
   Sessions: ['id', 'classId', 'subject', 'timing', 'date', 'status', 'createdAt', 'closedAt'],
   Attendance: ['id', 'sessionId', 'studentId', 'timestamp'],
-  QrSessions: ['id', 'classId', 'subject', 'room', 'startTime', 'expiryTime', 'token', 'status', 'attendance'],
+  QrSessions: ['id', 'classId', 'subject', 'room', 'startTime', 'expiryTime', 'token', 'status', 'attendance', 'classroomLat', 'classroomLng'],
+  AttendanceLogs: ['id', 'sessionId', 'studentId', 'ip', 'userAgent', 'lat', 'lng', 'faceVerified', 'locationVerified', 'timestamp', 'result'],
 }
 
 /**
@@ -215,7 +216,7 @@ const columnLetter = (num) => {
 
 const JSON_FIELDS = new Set(['faceEmbedding', 'attendance'])
 const BOOLEAN_FIELDS = new Set(['approved'])
-const NUMBER_FIELDS = new Set(['startTime', 'expiryTime'])
+const NUMBER_FIELDS = new Set(['startTime', 'expiryTime', 'classroomLat', 'classroomLng', 'lat', 'lng'])
 
 const serializeCell = (key, value) => {
   if (value === undefined || value === null) return ''

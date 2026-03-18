@@ -9,9 +9,11 @@ import {
   listSessionAttendance,
   listSessionAttendanceDetails,
   markAttendanceByQr,
+  markAttendanceSecure,
   markTeacherAttendanceByFace,
   openClassSession,
   startQrSession,
+  validateQrSession,
 } from '../controllers/attendanceController.js'
 
 const router = Router()
@@ -34,6 +36,8 @@ router.post(
   markTeacherAttendanceByFace,
 )
 router.post('/attendance/mark', markAttendanceByQr)
+router.post('/session/validate', validateQrSession)
+router.post('/attendance/mark-secure', markAttendanceSecure)
 router.get('/attendance/export/:classId', requireAuth(['TEACHER', 'SUPER_ADMIN']), exportClassAttendanceCsv)
 
 export default router
