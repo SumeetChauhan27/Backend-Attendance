@@ -1,19 +1,14 @@
-import { promises as fs } from 'node:fs'
 import { nanoid } from 'nanoid'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import {
+  appendRow,
+  deleteRow,
+  getRows,
+  initSheets,
+  setAllRows,
+  updateRow,
+} from './services/googleSheets.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const teachersFile = path.join(__dirname, '../database/teachers.json')
-const studentsFile = path.join(__dirname, '../database/students.json')
-const attendanceFile = path.join(__dirname, '../database/attendance.json')
-
-const attendanceDefaults = {
-  classes: [],
-  sessions: [],
-  qrSessions: [],
-  attendance: [],
-}
+// --- Normalization helpers (same logic, applied after reading from sheets) ---
 
 const normalizeTeacher = (user) => ({
   ...user,
@@ -41,7 +36,7 @@ const normalizeTeacher = (user) => ({
 
 const normalizeStudent = (user) => ({
   ...user,
-  role: user.role === 'student' ? 'STUDENT' : user.role,
+  role: user.role === 'student' ? 'STUDENT' : (user.role || 'STUDENT'),
   department: user.department ?? '',
   roll: user.roll ?? user.rollNumber ?? '',
   rollNumber: user.rollNumber ?? user.roll ?? '',
@@ -49,82 +44,51 @@ const normalizeStudent = (user) => ({
   faceEmbedding: user.faceEmbedding ?? null,
 })
 
-const normalizeAttendanceState = (data) => ({
-  classes: Array.isArray(data?.classes) ? data.classes : [],
-  sessions: Array.isArray(data?.sessions) ? data.sessions : [],
-  qrSessions: Array.isArray(data?.qrSessions) ? data.qrSessions : [],
-  attendance: Array.isArray(data?.attendance) ? data.attendance : [],
-})
-
-const readJson = async (filePath, fallback) => {
-  try {
-    const raw = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(raw)
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return fallback
-    }
-    throw error
-  }
-}
-
-const writeJson = async (filePath, data) => {
-  await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
-}
+// --- Read helpers ---
 
 const readTeachers = async () => {
-  const data = await readJson(teachersFile, [])
-  return Array.isArray(data) ? data.map(normalizeTeacher) : []
-}
-
-const writeTeachers = async (teachers) => {
-  await writeJson(teachersFile, teachers)
+  const rows = await getRows('Teachers')
+  return rows.map(normalizeTeacher)
 }
 
 const readStudents = async () => {
-  const data = await readJson(studentsFile, [])
-  return Array.isArray(data) ? data.map(normalizeStudent) : []
+  const rows = await getRows('Students')
+  return rows.map(normalizeStudent)
 }
 
-const writeStudents = async (students) => {
-  await writeJson(studentsFile, students)
+const readClasses = async () => getRows('Classes')
+
+const readSessions = async () => getRows('Sessions')
+
+const readAttendance = async () => getRows('Attendance')
+
+const readQrSessions = async () => {
+  const rows = await getRows('QrSessions')
+  return rows.map((row) => ({
+    ...row,
+    attendance: Array.isArray(row.attendance) ? row.attendance : [],
+  }))
 }
 
-const readAttendanceState = async () => {
-  const data = await readJson(attendanceFile, attendanceDefaults)
-  return normalizeAttendanceState(data)
+const getAllUsers = async () => {
+  const [teachers, students] = await Promise.all([readTeachers(), readStudents()])
+  return [...teachers, ...students]
 }
 
-const writeAttendanceState = async (data) => {
-  await writeJson(attendanceFile, data)
-}
-
-const readState = async () => {
-  const [teachers, students, attendance] = await Promise.all([
-    readTeachers(),
-    readStudents(),
-    readAttendanceState(),
-  ])
-
-  return { teachers, students, attendance }
-}
-
-const getAllUsers = (state) => [...state.teachers, ...state.students]
+// --- Init ---
 
 export const initDb = async () => {
-  const state = await readState()
-  await Promise.all([
-    writeTeachers(state.teachers),
-    writeStudents(state.students),
-    writeAttendanceState(state.attendance),
-  ])
+  await initSheets()
 }
 
+// --- Seed ---
+
 export const seedSuperAdmin = async (adminId, password) => {
-  const state = await readState()
-  const existing = state.teachers.find((user) => user.id === adminId)
+  const teachers = await readTeachers()
+  const existing = teachers.find((user) => user.id === adminId)
 
   if (existing) {
+    const index = teachers.indexOf(existing)
     existing.role = 'SUPER_ADMIN'
     existing.password = password
     existing.name = existing.name || 'Super Admin'
@@ -132,8 +96,9 @@ export const seedSuperAdmin = async (adminId, password) => {
     existing.classId = existing.classId || ''
     existing.department = existing.department || 'Administration'
     existing.approved = true
+    await updateRow('Teachers', index, existing)
   } else {
-    state.teachers.push({
+    await appendRow('Teachers', {
       id: adminId,
       role: 'SUPER_ADMIN',
       password,
@@ -142,18 +107,17 @@ export const seedSuperAdmin = async (adminId, password) => {
       classId: '',
       department: 'Administration',
       approved: true,
+      email: '',
     })
   }
-
-  await writeTeachers(state.teachers)
 }
 
 export const seedTeacher = async (teacherId, password) => {
-  const state = await readState()
-  const existing = state.teachers.find((user) => user.id === teacherId)
+  const teachers = await readTeachers()
+  const existing = teachers.find((user) => user.id === teacherId)
 
   if (!existing) {
-    state.teachers.push({
+    await appendRow('Teachers', {
       id: teacherId,
       role: 'TEACHER',
       password,
@@ -162,36 +126,38 @@ export const seedTeacher = async (teacherId, password) => {
       classId: '',
       department: 'General',
       approved: true,
+      email: '',
     })
-    await writeTeachers(state.teachers)
   }
 }
 
+// --- User lookups ---
+
 export const getUserById = async (id) => {
-  const state = await readState()
-  return getAllUsers(state).find((user) => user.id === id) || null
+  const users = await getAllUsers()
+  return users.find((user) => user.id === id) || null
 }
 
 export const getUserByLogin = async (login) => {
-  const state = await readState()
-  return getAllUsers(state).find((user) => user.id === login || user.email === login) || null
+  const users = await getAllUsers()
+  return users.find((user) => user.id === login || user.email === login) || null
 }
 
+// --- Classes ---
+
 export const createClass = async (name) => {
-  const state = await readState()
-  const existing = state.attendance.classes.find((item) => item.name === name)
+  const classes = await readClasses()
+  const existing = classes.find((item) => item.name === name)
   if (existing) return existing
 
   const record = { id: nanoid(), name }
-  state.attendance.classes.push(record)
-  await writeAttendanceState(state.attendance)
+  await appendRow('Classes', record)
   return record
 }
 
-export const listClasses = async () => {
-  const state = await readState()
-  return state.attendance.classes
-}
+export const listClasses = async () => readClasses()
+
+// --- Students ---
 
 export const createStudent = async ({
   id,
@@ -202,39 +168,38 @@ export const createStudent = async ({
   year,
   classId,
 }) => {
-  const state = await readState()
+  const users = await getAllUsers()
   const studentId = id || rollNumber
-  const existing = getAllUsers(state).find((user) => user.id === studentId)
+  const existing = users.find((user) => user.id === studentId)
   if (existing) {
     throw new Error('Student ID already exists')
   }
 
   const record = {
     id: studentId,
-    role: 'STUDENT',
-    password: password || rollNumber,
     name,
     roll: rollNumber,
     rollNumber,
     classId,
     department: department ?? '',
     year: year ?? '',
+    password: password || rollNumber,
     faceEmbedding: null,
   }
 
-  state.students.push(record)
-  await writeStudents(state.students)
-  return record
+  await appendRow('Students', record)
+  return { ...record, role: 'STUDENT' }
 }
 
 export const updateStudent = async (
   studentId,
   { name, rollNumber, department, year, faceEmbedding },
 ) => {
-  const state = await readState()
-  const student = state.students.find((user) => user.id === studentId)
-  if (!student) return null
+  const students = await readStudents()
+  const index = students.findIndex((user) => user.id === studentId)
+  if (index === -1) return null
 
+  const student = students[index]
   student.name = name ?? student.name
   student.roll = rollNumber ?? student.roll
   student.rollNumber = rollNumber ?? student.rollNumber ?? student.roll
@@ -242,35 +207,48 @@ export const updateStudent = async (
   student.year = year ?? student.year ?? ''
   student.faceEmbedding = faceEmbedding ?? student.faceEmbedding ?? null
 
-  await writeStudents(state.students)
+  await updateRow('Students', index, student)
   return student
 }
 
 export const deleteStudent = async (studentId) => {
-  const state = await readState()
-  const studentIndex = state.students.findIndex((user) => user.id === studentId)
-  if (studentIndex === -1) return false
+  const students = await readStudents()
+  const index = students.findIndex((user) => user.id === studentId)
+  if (index === -1) return false
 
-  state.students.splice(studentIndex, 1)
-  state.attendance.attendance = state.attendance.attendance.filter(
-    (record) => record.studentId !== studentId,
-  )
-  state.attendance.qrSessions = state.attendance.qrSessions.map((session) => ({
-    ...session,
-    attendance: session.attendance.filter((id) => id !== studentId),
-  }))
+  await deleteRow('Students', index)
 
-  await Promise.all([
-    writeStudents(state.students),
-    writeAttendanceState(state.attendance),
-  ])
+  // Clean up attendance records
+  const attendance = await readAttendance()
+  const filtered = attendance.filter((record) => record.studentId !== studentId)
+  if (filtered.length !== attendance.length) {
+    await setAllRows('Attendance', filtered)
+  }
+
+  // Clean up QR session attendance
+  const qrSessions = await readQrSessions()
+  let qrChanged = false
+  const updatedQr = qrSessions.map((session) => {
+    const newAttendance = session.attendance.filter((id) => id !== studentId)
+    if (newAttendance.length !== session.attendance.length) {
+      qrChanged = true
+      return { ...session, attendance: newAttendance }
+    }
+    return session
+  })
+  if (qrChanged) {
+    await setAllRows('QrSessions', updatedQr)
+  }
+
   return true
 }
 
+// --- Teachers ---
+
 export const registerTeacher = async ({ name, email, password, department }) => {
-  const state = await readState()
+  const users = await getAllUsers()
   const normalizedEmail = String(email).trim().toLowerCase()
-  const existing = getAllUsers(state).find(
+  const existing = users.find(
     (user) => user.email?.toLowerCase() === normalizedEmail || user.id === normalizedEmail,
   )
   if (existing) {
@@ -289,33 +267,36 @@ export const registerTeacher = async ({ name, email, password, department }) => 
     classId: '',
   }
 
-  state.teachers.push(record)
-  await writeTeachers(state.teachers)
-
+  await appendRow('Teachers', record)
   const { password: _password, ...safeTeacher } = record
   return safeTeacher
 }
 
 export const listStudentsByClass = async (classId) => {
-  const state = await readState()
-  return state.students.filter((user) => user.classId === classId)
+  const students = await readStudents()
+  return students.filter((user) => user.classId === classId)
 }
 
 export const listStudentsWithAttendance = async (classId) => {
-  const state = await readState()
-  const students = state.students.filter((user) => user.classId === classId)
-  const sessions = state.attendance.sessions.filter((session) => session.classId === classId)
-  const sessionIds = new Set(sessions.map((session) => session.id))
-  const total = sessions.length
+  const [students, sessions, attendance] = await Promise.all([
+    readStudents(),
+    readSessions(),
+    readAttendance(),
+  ])
+
+  const classStudents = students.filter((user) => user.classId === classId)
+  const classSessions = sessions.filter((session) => session.classId === classId)
+  const sessionIds = new Set(classSessions.map((session) => session.id))
+  const total = classSessions.length
   const attendanceByStudent = new Map()
 
-  state.attendance.attendance.forEach((record) => {
+  attendance.forEach((record) => {
     if (!sessionIds.has(record.sessionId)) return
     const count = attendanceByStudent.get(record.studentId) ?? 0
     attendanceByStudent.set(record.studentId, count + 1)
   })
 
-  return students.map((student) => {
+  return classStudents.map((student) => {
     const present = attendanceByStudent.get(student.id) ?? 0
     const percentage = total ? Math.round((present / total) * 100) : 0
     return {
@@ -326,9 +307,11 @@ export const listStudentsWithAttendance = async (classId) => {
   })
 }
 
+// --- Sessions ---
+
 export const openSession = async ({ classId, subject, timing }) => {
-  const state = await readState()
-  const active = state.attendance.sessions.find(
+  const sessions = await readSessions()
+  const active = sessions.find(
     (session) => session.classId === classId && session.status === 'open',
   )
   if (active) return active
@@ -341,41 +324,44 @@ export const openSession = async ({ classId, subject, timing }) => {
     date: new Date().toISOString().slice(0, 10),
     status: 'open',
     createdAt: new Date().toISOString(),
+    closedAt: '',
   }
 
-  state.attendance.sessions.push(record)
-  await writeAttendanceState(state.attendance)
+  await appendRow('Sessions', record)
   return record
 }
 
 export const closeSession = async (sessionId) => {
-  const state = await readState()
-  const session = state.attendance.sessions.find((item) => item.id === sessionId)
-  if (!session) return null
+  const sessions = await readSessions()
+  const index = sessions.findIndex((item) => item.id === sessionId)
+  if (index === -1) return null
 
+  const session = sessions[index]
   session.status = 'closed'
   session.closedAt = new Date().toISOString()
-  await writeAttendanceState(state.attendance)
+  await updateRow('Sessions', index, session)
   return session
 }
 
 export const getActiveSession = async (classId) => {
-  const state = await readState()
+  const sessions = await readSessions()
   return (
-    state.attendance.sessions.find(
+    sessions.find(
       (session) => session.classId === classId && session.status === 'open',
     ) || null
   )
 }
 
 export const getSessionById = async (sessionId) => {
-  const state = await readState()
-  return state.attendance.sessions.find((session) => session.id === sessionId) || null
+  const sessions = await readSessions()
+  return sessions.find((session) => session.id === sessionId) || null
 }
 
+// --- Attendance ---
+
 export const markAttendance = async ({ sessionId, studentId }) => {
-  const state = await readState()
-  const existing = state.attendance.attendance.find(
+  const attendance = await readAttendance()
+  const existing = attendance.find(
     (record) => record.sessionId === sessionId && record.studentId === studentId,
   )
   if (existing) return existing
@@ -387,27 +373,29 @@ export const markAttendance = async ({ sessionId, studentId }) => {
     timestamp: new Date().toISOString(),
   }
 
-  state.attendance.attendance.push(record)
-  await writeAttendanceState(state.attendance)
+  await appendRow('Attendance', record)
   return record
 }
 
 export const listAttendanceBySession = async (sessionId) => {
-  const state = await readState()
-  return state.attendance.attendance.filter((record) => record.sessionId === sessionId)
+  const attendance = await readAttendance()
+  return attendance.filter((record) => record.sessionId === sessionId)
 }
 
 export const listSessionsByClass = async (classId) => {
-  const state = await readState()
-  return state.attendance.sessions.filter((session) => session.classId === classId)
+  const sessions = await readSessions()
+  return sessions.filter((session) => session.classId === classId)
 }
 
 export const listAttendanceDetailed = async (sessionId) => {
-  const state = await readState()
-  const records = state.attendance.attendance.filter((record) => record.sessionId === sessionId)
+  const [students, attendance] = await Promise.all([
+    readStudents(),
+    readAttendance(),
+  ])
+  const records = attendance.filter((record) => record.sessionId === sessionId)
 
   return records.map((record) => {
-    const student = state.students.find((user) => user.id === record.studentId)
+    const student = students.find((user) => user.id === record.studentId)
     return {
       ...record,
       student: student
@@ -418,15 +406,22 @@ export const listAttendanceDetailed = async (sessionId) => {
 }
 
 export const listStudentAttendanceSummary = async (studentId) => {
-  const state = await readState()
-  const student = state.students.find((user) => user.id === studentId)
+  const [students, sessions, attendance] = await Promise.all([
+    readStudents(),
+    readSessions(),
+    readAttendance(),
+  ])
+  const student = students.find((user) => user.id === studentId)
   if (!student || !student.classId) return []
 
-  const sessions = state.attendance.sessions.filter((session) => session.classId === student.classId)
-  const attendance = state.attendance.attendance.filter((record) => record.studentId === studentId)
-  const attendanceSet = new Set(attendance.map((record) => record.sessionId))
+  const classSessions = sessions.filter((session) => session.classId === student.classId)
+  const attendanceSet = new Set(
+    attendance
+      .filter((record) => record.studentId === studentId)
+      .map((record) => record.sessionId),
+  )
 
-  return sessions.map((session) => ({
+  return classSessions.map((session) => ({
     id: session.id,
     subject: session.subject,
     timing: session.timing,
@@ -437,70 +432,84 @@ export const listStudentAttendanceSummary = async (studentId) => {
 }
 
 export const getStudentById = async (studentId) => {
-  const state = await readState()
-  return state.students.find((user) => user.id === studentId) || null
+  const students = await readStudents()
+  return students.find((user) => user.id === studentId) || null
 }
 
+// --- Teacher management ---
+
 export const listTeachers = async () => {
-  const state = await readState()
-  return state.teachers
+  const teachers = await readTeachers()
+  return teachers
     .filter((user) => user.role === 'TEACHER')
     .map(({ password, ...teacher }) => teacher)
 }
 
 export const approveTeacher = async (teacherId) => {
-  const state = await readState()
-  const teacher = state.teachers.find((user) => user.id === teacherId && user.role === 'TEACHER')
-  if (!teacher) return null
+  const teachers = await readTeachers()
+  const index = teachers.findIndex((user) => user.id === teacherId && user.role === 'TEACHER')
+  if (index === -1) return null
 
+  const teacher = teachers[index]
   teacher.approved = true
-  await writeTeachers(state.teachers)
+  await updateRow('Teachers', index, teacher)
 
   const { password, ...safeTeacher } = teacher
   return safeTeacher
 }
 
+// --- System activity ---
+
 export const getSystemActivity = async () => {
-  const state = await readState()
-  const teachers = state.teachers.filter((user) => user.role === 'TEACHER')
-  const activeSessions = state.attendance.sessions.filter((session) => session.status === 'open')
+  const [teachers, students, classes, sessions, attendance] = await Promise.all([
+    readTeachers(),
+    readStudents(),
+    readClasses(),
+    readSessions(),
+    readAttendance(),
+  ])
+
+  const teacherList = teachers.filter((user) => user.role === 'TEACHER')
+  const activeSessions = sessions.filter((session) => session.status === 'open')
 
   return {
     totals: {
-      teachers: teachers.length,
-      approvedTeachers: teachers.filter((teacher) => teacher.approved).length,
-      pendingTeachers: teachers.filter((teacher) => !teacher.approved).length,
-      students: state.students.length,
-      classes: state.attendance.classes.length,
-      sessions: state.attendance.sessions.length,
+      teachers: teacherList.length,
+      approvedTeachers: teacherList.filter((teacher) => teacher.approved).length,
+      pendingTeachers: teacherList.filter((teacher) => !teacher.approved).length,
+      students: students.length,
+      classes: classes.length,
+      sessions: sessions.length,
       activeSessions: activeSessions.length,
-      attendanceRecords: state.attendance.attendance.length,
+      attendanceRecords: attendance.length,
     },
-    recentSessions: state.attendance.sessions
+    recentSessions: sessions
       .slice()
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
       .slice(0, 5),
   }
 }
 
+// --- QR Sessions ---
+
 export const createQrSession = async (payload) => {
-  const state = await readState()
-  state.attendance.qrSessions.push(payload)
-  await writeAttendanceState(state.attendance)
+  await appendRow('QrSessions', {
+    ...payload,
+    attendance: payload.attendance || [],
+  })
   return payload
 }
 
 export const findQrSessionById = async (sessionId) => {
-  const state = await readState()
-  return state.attendance.qrSessions.find((session) => session.id === sessionId) || null
+  const sessions = await readQrSessions()
+  return sessions.find((session) => session.id === sessionId) || null
 }
 
 export const saveQrSession = async (session) => {
-  const state = await readState()
-  const index = state.attendance.qrSessions.findIndex((item) => item.id === session.id)
+  const sessions = await readQrSessions()
+  const index = sessions.findIndex((item) => item.id === session.id)
   if (index === -1) return null
 
-  state.attendance.qrSessions[index] = session
-  await writeAttendanceState(state.attendance)
+  await updateRow('QrSessions', index, session)
   return session
 }
