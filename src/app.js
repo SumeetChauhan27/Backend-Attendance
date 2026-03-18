@@ -5,6 +5,7 @@ import attendanceRoutes from './routes/attendanceRoutes.js'
 import studentRoutes from './routes/studentRoutes.js'
 import teacherRoutes from './routes/teacherRoutes.js'
 import { initDb, seedSuperAdmin, seedTeacher } from './db.js'
+import { refreshCache, startCacheRefresh } from './services/embeddingCache.js'
 
 const app = express()
 
@@ -22,6 +23,10 @@ export const setupDb = async () => {
     await seedSuperAdmin(superAdminId, superAdminPass)
     await seedTeacher(teacherId, teacherPass)
     console.log('Database seeded successfully')
+    
+    // Load embeddings into memory
+    await refreshCache()
+    startCacheRefresh()
   } catch (err) {
     console.error('Failed to initialize or seed database:', err)
   }

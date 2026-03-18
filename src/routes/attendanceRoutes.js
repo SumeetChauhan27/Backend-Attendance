@@ -35,9 +35,12 @@ router.post(
   requireAuth(['TEACHER', 'SUPER_ADMIN']),
   markTeacherAttendanceByFace,
 )
+import { matchFace } from '../controllers/faceController.js'
+
 router.post('/attendance/mark', markAttendanceByQr)
 router.post('/session/validate', validateQrSession)
 router.post('/attendance/mark-secure', markAttendanceSecure)
 router.get('/attendance/export/:classId', requireAuth(['TEACHER', 'SUPER_ADMIN']), exportClassAttendanceCsv)
+router.post('/face/match', matchFace)
 
 export default router

@@ -89,6 +89,29 @@ export const getStudentFaceEmbedding = async (req, res) => {
   res.json(toStudentFaceEmbeddingPayload(user))
 }
 
+export const registerStudentFaceEmbedding = async (req, res) => {
+  const user = await getUserById(req.auth.userId)
+  if (!user) {
+    res.status(404).send('User not found')
+    return
+  }
+
+  const { embeddings } = req.body ?? {}
+  if (!embeddings || !Array.isArray(embeddings)) {
+    res.status(400).send('Face embeddings array is required')
+    return
+  }
+
+  const updated = await updateSpreadsheetStudent(user.id, {
+    faceEmbedding: embeddings,
+  })
+
+  // We should also invalidate or update the embedding cache here
+  import('../services/embeddingCache.js').then(({ refreshCache }) => refreshCache())
+
+  res.json({ message: 'Face enrolled successfully', embeddings })
+}
+
 export const markStudentAttendance = async (req, res) => {
   const user = await getUserById(req.auth.userId)
   if (!user) {
