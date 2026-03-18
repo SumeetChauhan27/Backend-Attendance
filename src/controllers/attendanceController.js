@@ -9,6 +9,7 @@ import {
   listAttendanceBySession,
   listAttendanceDetailed,
   listSessionsByClass,
+  listStudentsByClass,
   markAttendance,
   openSession,
   saveQrSession,
@@ -188,5 +189,106 @@ export const markAttendanceByQr = async (req, res) => {
     res.json({ message: 'attendance marked' })
   } catch {
     res.status(500).json({ message: 'internal server error' })
+  }
+}
+
+const escapeCsv = (value) => {
+  const str = String(value ?? '')
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
+export const exportClassAttendanceCsv = async (req, res) => {
+  try {
+    const classId = req.params.classId
+    if (!classId) {
+      res.status(400).send('Class ID required')
+      return
+    }
+
+    const [students, sessions, attendance] = await Promise.all([
+      listStudentsByClass(classId),
+      listSessionsByClass(classId),
+      (async () => {
+        const allSessions = await listSessionsByClass(classId)
+        const records = []
+        for (const session of allSessions) {
+          const sessionRecords = await listAttendanceBySession(session.id)
+          records.push(...sessionRecords)
+        }
+        return records
+      })(),
+    ])
+
+    // Sort sessions by date then createdAt
+    sessions.sort((a, b) => {
+      const dateA = a.date || ''
+      const dateB = b.date || ''
+      if (dateA !== dateB) return dateA.localeCompare(dateB)
+      return (a.createdAt || '').localeCompare(b.createdAt || '')
+    })
+
+    // Build attendance lookup: sessionId -> Set of studentIds
+    const attendanceMap = new Map()
+    attendance.forEach((record) => {
+      if (!attendanceMap.has(record.sessionId)) {
+        attendanceMap.set(record.sessionId, new Set())
+      }
+      attendanceMap.get(record.sessionId).add(record.studentId)
+    })
+
+    // Build CSV header
+    const header = [
+      'Roll Number',
+      'Student Name',
+      'Department',
+      'Year',
+      ...sessions.map((s) => `${s.subject} (${s.date} ${s.timing || ''})`),
+      'Total Present',
+      'Total Sessions',
+      'Percentage',
+    ]
+
+    // Build CSV rows
+    const rows = students.map((student) => {
+      let presentCount = 0
+      const sessionCells = sessions.map((session) => {
+        const isPresent = attendanceMap.get(session.id)?.has(student.id)
+        if (isPresent) presentCount += 1
+        return isPresent ? 'P' : 'A'
+      })
+
+      const total = sessions.length
+      const percentage = total ? Math.round((presentCount / total) * 100) : 0
+
+      return [
+        student.rollNumber || student.roll || student.id,
+        student.name,
+        student.department || '',
+        student.year || '',
+        ...sessionCells,
+        presentCount,
+        total,
+        `${percentage}%`,
+      ]
+    })
+
+    // Sort students by roll number
+    rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+
+    const csvContent = [header, ...rows]
+      .map((row) => row.map(escapeCsv).join(','))
+      .join('\n')
+
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="attendance_${classId}_${new Date().toISOString().slice(0, 10)}.csv"`,
+    )
+    res.send(csvContent)
+  } catch {
+    res.status(500).send('Unable to export attendance')
   }
 }

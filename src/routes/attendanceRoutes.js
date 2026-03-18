@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../controllers/authController.js'
 import {
   closeClassSession,
+  exportClassAttendanceCsv,
   getActiveClassSession,
   health,
   listClassSessions,
@@ -33,5 +34,6 @@ router.post(
   markTeacherAttendanceByFace,
 )
 router.post('/attendance/mark', markAttendanceByQr)
+router.get('/attendance/export/:classId', requireAuth(['TEACHER', 'SUPER_ADMIN']), exportClassAttendanceCsv)
 
 export default router
