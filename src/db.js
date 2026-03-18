@@ -34,15 +34,19 @@ const normalizeTeacher = (user) => ({
   classId: user.classId ?? '',
 })
 
-const normalizeStudent = (user) => ({
-  ...user,
-  role: user.role === 'student' ? 'STUDENT' : (user.role || 'STUDENT'),
-  department: user.department ?? '',
-  roll: user.roll ?? user.rollNumber ?? '',
-  rollNumber: user.rollNumber ?? user.roll ?? '',
-  year: user.year ?? '',
-  faceEmbedding: user.faceEmbedding ?? null,
-})
+const normalizeStudent = (user) => {
+  const rollSource = user.rollNumber ?? user.roll ?? ''
+  return {
+    ...user,
+    role: user.role === 'student' ? 'STUDENT' : (user.role || 'STUDENT'),
+    department: user.department ?? '',
+    roll: user.roll ?? user.rollNumber ?? '',
+    rollNumber: rollSource,
+    year: user.year ?? '',
+    password: user.password || rollSource || user.id,
+    faceEmbedding: user.faceEmbedding ?? null,
+  }
+}
 
 // --- Read helpers ---
 
