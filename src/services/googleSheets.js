@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { getCached, setCache, invalidateCache } from './sheetsCache.js'
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
@@ -88,21 +89,27 @@ export const getRows = async (tabName) => {
   const headers = TABS[tabName]
   if (!headers) throw new Error(`Unknown tab: ${tabName}`)
 
+  const cached = getCached(tabName)
+  if (cached) return cached
+
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range: `${tabName}!A:${columnLetter(headers.length)}`,
   })
 
   const rows = result.data.values || []
-  if (rows.length <= 1) return [] // Only header or empty
+  const data = rows.length <= 1
+    ? []
+    : rows.slice(1).map((row) => {
+        const obj = {}
+        headers.forEach((key, i) => {
+          obj[key] = deserializeCell(key, row[i])
+        })
+        return obj
+      })
 
-  return rows.slice(1).map((row) => {
-    const obj = {}
-    headers.forEach((key, i) => {
-      obj[key] = deserializeCell(key, row[i])
-    })
-    return obj
-  })
+  setCache(tabName, data)
+  return data
 }
 
 /**
@@ -121,6 +128,7 @@ export const appendRow = async (tabName, obj) => {
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
   })
+  invalidateCache(tabName)
 }
 
 /**
@@ -140,6 +148,7 @@ export const updateRow = async (tabName, dataRowIndex, obj) => {
     valueInputOption: 'RAW',
     requestBody: { values: [row] },
   })
+  invalidateCache(tabName)
 }
 
 /**
@@ -172,6 +181,7 @@ export const deleteRow = async (tabName, dataRowIndex) => {
       ],
     },
   })
+  invalidateCache(tabName)
 }
 
 /**
@@ -187,7 +197,10 @@ export const setAllRows = async (tabName, objects) => {
     range: `${tabName}!A2:${columnLetter(headers.length)}`,
   })
 
-  if (objects.length === 0) return
+  if (objects.length === 0) {
+    invalidateCache(tabName)
+    return
+  }
 
   const rows = objects.map((obj) =>
     headers.map((key) => serializeCell(key, obj[key])),
@@ -199,6 +212,7 @@ export const setAllRows = async (tabName, objects) => {
     valueInputOption: 'RAW',
     requestBody: { values: rows },
   })
+  invalidateCache(tabName)
 }
 
 // --- Helpers ---
