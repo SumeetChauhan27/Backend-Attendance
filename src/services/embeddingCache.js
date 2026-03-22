@@ -47,16 +47,29 @@ export const refreshCache = async () => {
           : row.faceEmbedding
           
         let embeddings = []
-        if (typeof parsed[0] === 'number') {
-          embeddings = [parsed.map(Number)] // migrate single to array of 1
-        } else {
-          embeddings = parsed.map(desc => desc.map(Number))
+        let averageEmbedding = null
+
+        // Check if it's the new object format { embeddings: [...], averageEmbedding: [...] }
+        if (parsed && !Array.isArray(parsed) && parsed.embeddings && Array.isArray(parsed.embeddings)) {
+          embeddings = parsed.embeddings.map(desc => desc.map(Number))
+          if (parsed.averageEmbedding && Array.isArray(parsed.averageEmbedding)) {
+            averageEmbedding = parsed.averageEmbedding.map(Number)
+          }
+        } 
+        // Migrate old array formats
+        else if (Array.isArray(parsed)) {
+          if (typeof parsed[0] === 'number') {
+            embeddings = [parsed.map(Number)] // single sample -> array of 1
+          } else {
+            embeddings = parsed.map(desc => desc.map(Number)) // array of samples
+          }
         }
 
         return {
           studentId: row.id,
           name: row.name || '',
           embeddings,
+          averageEmbedding
         }
       })
 
