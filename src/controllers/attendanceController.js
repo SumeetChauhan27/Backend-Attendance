@@ -42,7 +42,7 @@ export const startQrSession = async (req, res) => {
     }
 
     const startTime = Date.now()
-    const expiryTime = startTime + 5 * 60 * 1000
+    const expiryTime = startTime + 20 * 1000
     const sessionId = crypto.randomUUID()
     const token = crypto.randomBytes(32).toString('hex')
 

@@ -70,6 +70,7 @@ export const refreshCache = async () => {
           name: row.name || '',
           embeddings,
           averageEmbedding
+
         }
       })
 

@@ -53,7 +53,7 @@ export const findBestMatch = (inputDescriptor, studentsData, threshold = 0.65) =
   }
 
   const current = normalize(sanitizeFaceEmbedding(inputDescriptor))
-  const matches = []
+  let matches = []
 
   for (const student of studentsData) {
     let bestForStudent = 0
