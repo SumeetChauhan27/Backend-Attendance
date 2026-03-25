@@ -35,6 +35,11 @@ router.post(
   requireAuth(['TEACHER', 'SUPER_ADMIN']),
   markTeacherAttendanceByFace,
 )
+router.post(
+  '/teachers/attendance/manual-mark',
+  requireAuth(['TEACHER', 'SUPER_ADMIN']),
+  markTeacherAttendanceByFace,
+)
 import { matchFace } from '../controllers/faceController.js'
 
 router.post('/attendance/mark', markAttendanceByQr)
