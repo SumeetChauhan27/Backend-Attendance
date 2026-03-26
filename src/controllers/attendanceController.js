@@ -11,9 +11,9 @@ import {
   getUserByLogin,
   listAttendanceBySession,
   listAttendanceDetailed,
-  listSessionsByClass,
   listStudentsByClass,
   markAttendance,
+  removeAttendance,
   openSession,
   saveQrSession,
 } from '../db.js'
@@ -152,6 +152,50 @@ export const markTeacherAttendanceByFace = async (req, res) => {
     studentId: student.id,
   })
   res.json(record)
+}
+
+export const markTeacherAttendanceManually = async (req, res) => {
+  const { studentId, sessionId, present } = req.body ?? {}
+  if (!studentId || !sessionId || typeof present !== 'boolean') {
+    res.status(400).send('Student ID, session ID and present flag are required')
+    return
+  }
+
+  const student = await getStudentById(studentId)
+  if (!student) {
+    res.status(404).send('Student not found')
+    return
+  }
+
+  const targetSession = await getSessionById(sessionId)
+  if (!targetSession) {
+    res.status(404).send('Session not found')
+    return
+  }
+
+  if (targetSession.status !== 'open') {
+    res.status(400).send('Session is not active')
+    return
+  }
+
+  if (targetSession.classId !== student.classId) {
+    res.status(400).send('Student does not belong to this session class')
+    return
+  }
+
+  if (present) {
+    const record = await markAttendance({
+      sessionId: targetSession.id,
+      studentId: student.id,
+    })
+    res.json(record)
+  } else {
+    await removeAttendance({
+      sessionId: targetSession.id,
+      studentId: student.id,
+    })
+    res.json({ message: 'Attendance removed' })
+  }
 }
 
 export const markAttendanceByQr = async (req, res) => {

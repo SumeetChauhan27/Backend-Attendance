@@ -11,6 +11,7 @@ import {
   markAttendanceByQr,
   markAttendanceSecure,
   markTeacherAttendanceByFace,
+  markTeacherAttendanceManually,
   openClassSession,
   startQrSession,
   validateQrSession,
@@ -36,9 +37,9 @@ router.post(
   markTeacherAttendanceByFace,
 )
 router.post(
-  '/teachers/attendance/manual-mark',
+  '/teachers/attendance/manual',
   requireAuth(['TEACHER', 'SUPER_ADMIN']),
-  markTeacherAttendanceByFace,
+  markTeacherAttendanceManually,
 )
 import { matchFace } from '../controllers/faceController.js'
 

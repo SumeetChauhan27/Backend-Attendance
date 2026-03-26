@@ -385,6 +385,18 @@ export const markAttendance = async ({ sessionId, studentId }) => {
   return record
 }
 
+export const removeAttendance = async ({ sessionId, studentId }) => {
+  const attendance = await readAttendance()
+  const filtered = attendance.filter(
+    (record) => !(record.sessionId === sessionId && record.studentId === studentId)
+  )
+  if (filtered.length !== attendance.length) {
+    await setAllRows('Attendance', filtered)
+    return true
+  }
+  return false
+}
+
 export const listAttendanceBySession = async (sessionId) => {
   const attendance = await readAttendance()
   return attendance.filter((record) => record.sessionId === sessionId)
