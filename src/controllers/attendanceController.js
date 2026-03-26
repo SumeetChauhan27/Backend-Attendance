@@ -30,7 +30,15 @@ export const openClassSession = async (req, res) => {
     return
   }
 
-  res.json(await openSession({ classId, subject, timing }))
+  const session = await openSession({ classId, subject, timing })
+  res.json(session)
+
+  // Automatically close session after 1 minute (60,000 ms)
+  setTimeout(() => {
+    closeSession(session.id)
+      .then(() => console.log(`Auto-closed session ${session.id} after 1 minute`))
+      .catch((err) => console.error(`Failed to auto-close session ${session.id}:`, err))
+  }, 60000)
 }
 
 export const startQrSession = async (req, res) => {
