@@ -14,10 +14,14 @@ const app = express()
 // Gzip compress all responses to save bandwidth
 app.use(compression())
 
-// Lock CORS to the deployed frontend URL (falls back to permissive for local dev)
+// Lock CORS to the deployed frontend URL(s).
+// Supports comma-separated values: FRONTEND_URL=https://a.vercel.app,https://b.vercel.app
+// Falls back to allowing all origins in local dev (no env var set).
 const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL]
-  : true // allow all in dev when env var is not set
+  ? process.env.FRONTEND_URL.split(',').map((o) => o.trim())
+  : true
+
+console.log('[CORS] Allowed origins:', allowedOrigins)
 
 app.use(cors({
   origin: allowedOrigins,
