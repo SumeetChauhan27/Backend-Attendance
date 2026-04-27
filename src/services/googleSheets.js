@@ -12,7 +12,14 @@ const auth = new google.auth.GoogleAuth({
 })
 
 const sheets = google.sheets({ version: 'v4', auth })
-const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID
+// Accept both naming conventions — GOOGLE_SPREADSHEET_ID and GOOGLE_SHEET_ID
+const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID
+
+if (!SPREADSHEET_ID) {
+  console.error('[googleSheets] FATAL: Neither GOOGLE_SPREADSHEET_ID nor GOOGLE_SHEET_ID is set. All database calls will fail.')
+} else {
+  console.log('[googleSheets] Spreadsheet ID loaded:', SPREADSHEET_ID.slice(0, 8) + '...')
+}
 
 // Tab definitions with header rows
 const TABS = {
