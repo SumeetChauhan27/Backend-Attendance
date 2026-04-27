@@ -95,35 +95,51 @@ export const closeClassSession = async (req, res) => {
 }
 
 export const getActiveClassSession = async (req, res) => {
-  const session = await getActiveSession(req.params.classId)
-  res.json(session ?? null)
+  try {
+    const session = await getActiveSession(req.params.classId)
+    res.json(session ?? null)
+  } catch {
+    res.status(500).json({ message: 'internal server error' })
+  }
 }
 
 export const listSessionAttendance = async (req, res) => {
-  res.json(await listAttendanceBySession(req.params.sessionId))
+  try {
+    res.json(await listAttendanceBySession(req.params.sessionId))
+  } catch {
+    res.status(500).json({ message: 'internal server error' })
+  }
 }
 
 export const listSessionAttendanceDetails = async (req, res) => {
-  res.json(await listAttendanceDetailed(req.params.sessionId))
+  try {
+    res.json(await listAttendanceDetailed(req.params.sessionId))
+  } catch {
+    res.status(500).json({ message: 'internal server error' })
+  }
 }
 
 export const listClassSessions = async (req, res) => {
-  const sessions = await listSessionsByClass(req.params.classId)
-  const attendance = await Promise.all(
-    sessions.map(async (session) => {
-      const records = await listAttendanceBySession(session.id)
-      return { ...session, presentCount: records.length }
-    }),
-  )
+  try {
+    const sessions = await listSessionsByClass(req.params.classId)
+    const attendance = await Promise.all(
+      sessions.map(async (session) => {
+        const records = await listAttendanceBySession(session.id)
+        return { ...session, presentCount: records.length }
+      }),
+    )
 
-  attendance.sort((a, b) => {
-    const dateA = a.date || ''
-    const dateB = b.date || ''
-    if (dateA !== dateB) return dateB.localeCompare(dateA)
-    return (b.createdAt || '').localeCompare(a.createdAt || '')
-  })
+    attendance.sort((a, b) => {
+      const dateA = a.date || ''
+      const dateB = b.date || ''
+      if (dateA !== dateB) return dateB.localeCompare(dateA)
+      return (b.createdAt || '').localeCompare(a.createdAt || '')
+    })
 
-  res.json(attendance)
+    res.json(attendance)
+  } catch {
+    res.status(500).json({ message: 'internal server error' })
+  }
 }
 
 export const markTeacherAttendanceByFace = async (req, res) => {
