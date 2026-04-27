@@ -14,14 +14,14 @@ import {
 } from '../services/spreadsheetService.js'
 
 export const registerTeacherAccount = async (req, res) => {
-  const { name, email, password, department } = req.body ?? {}
+  const { id, name, email, password, department } = req.body ?? {}
   if (!name || !email || !password || !department) {
     res.status(400).send('Name, email, password, and department are required')
     return
   }
 
   try {
-    const teacher = await registerTeacher({ name, email, password, department })
+    const teacher = await registerTeacher({ id, name, email, password, department })
     res.status(201).json(teacher)
   } catch (error) {
     res.status(400).send(error.message || 'Unable to register teacher')

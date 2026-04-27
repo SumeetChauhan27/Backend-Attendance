@@ -253,7 +253,7 @@ export const deleteStudent = async (studentId) => {
 
 // --- Teachers ---
 
-export const registerTeacher = async ({ name, email, password, department }) => {
+export const registerTeacher = async ({ id: customId, name, email, password, department }) => {
   const users = await getAllUsers()
   const normalizedEmail = String(email).trim().toLowerCase()
   const existing = users.find(
@@ -263,8 +263,14 @@ export const registerTeacher = async ({ name, email, password, department }) => 
     throw new Error('Teacher account already exists for this email')
   }
 
+  // If a custom ID was supplied, check it's not already taken
+  if (customId) {
+    const idTaken = users.find((user) => user.id === customId.trim())
+    if (idTaken) throw new Error('Teacher ID already taken. Choose a different one.')
+  }
+
   const record = {
-    id: nanoid(10),
+    id: customId ? customId.trim() : nanoid(10),
     name,
     email: normalizedEmail,
     password,
@@ -401,6 +407,9 @@ export const listAttendanceBySession = async (sessionId) => {
   const attendance = await readAttendance()
   return attendance.filter((record) => record.sessionId === sessionId)
 }
+
+export const listAllAttendance = async () => readAttendance()
+
 
 export const listSessionsByClass = async (classId) => {
   const sessions = await readSessions()

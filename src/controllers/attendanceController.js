@@ -9,8 +9,10 @@ import {
   getSessionById,
   getStudentById,
   getUserByLogin,
+  listAllAttendance,
   listAttendanceBySession,
   listAttendanceDetailed,
+  listSessionsByClass,
   listStudentsByClass,
   markAttendance,
   removeAttendance,
@@ -121,22 +123,31 @@ export const listSessionAttendanceDetails = async (req, res) => {
 
 export const listClassSessions = async (req, res) => {
   try {
-    const sessions = await listSessionsByClass(req.params.classId)
-    const attendance = await Promise.all(
-      sessions.map(async (session) => {
-        const records = await listAttendanceBySession(session.id)
-        return { ...session, presentCount: records.length }
-      }),
-    )
+    // Fetch sessions and ALL attendance in 2 parallel calls (no N+1)
+    const [sessions, allAttendance] = await Promise.all([
+      listSessionsByClass(req.params.classId),
+      listAllAttendance(),
+    ])
 
-    attendance.sort((a, b) => {
+    // Count attendance per session in memory
+    const countMap = new Map()
+    for (const record of allAttendance) {
+      countMap.set(record.sessionId, (countMap.get(record.sessionId) ?? 0) + 1)
+    }
+
+    const result = sessions.map((session) => ({
+      ...session,
+      presentCount: countMap.get(session.id) ?? 0,
+    }))
+
+    result.sort((a, b) => {
       const dateA = a.date || ''
       const dateB = b.date || ''
       if (dateA !== dateB) return dateB.localeCompare(dateA)
       return (b.createdAt || '').localeCompare(a.createdAt || '')
     })
 
-    res.json(attendance)
+    res.json(result)
   } catch {
     res.status(500).json({ message: 'internal server error' })
   }
@@ -457,19 +468,16 @@ export const exportClassAttendanceCsv = async (req, res) => {
       return
     }
 
-    const [students, sessions, attendance] = await Promise.all([
+    const [students, sessions, allAttendance] = await Promise.all([
       listStudentsByClass(classId),
       listSessionsByClass(classId),
-      (async () => {
-        const allSessions = await listSessionsByClass(classId)
-        const records = []
-        for (const session of allSessions) {
-          const sessionRecords = await listAttendanceBySession(session.id)
-          records.push(...sessionRecords)
-        }
-        return records
-      })(),
+      listAllAttendance(),
     ])
+
+    // Filter attendance to only records for sessions in this class
+    const sessionIds = new Set(sessions.map((s) => s.id))
+    const attendance = allAttendance.filter((r) => sessionIds.has(r.sessionId))
+
 
     // Sort sessions by date then createdAt
     sessions.sort((a, b) => {
