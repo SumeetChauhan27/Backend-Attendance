@@ -199,6 +199,39 @@ export const createStudent = async ({
   return { ...record, role: 'STUDENT' }
 }
 
+/**
+ * Normalize any incoming faceEmbedding to number[][] before writing to Sheets.
+ * Handles all known formats:
+ *   - number[][]                   → keep as-is
+ *   - number[]  (flat, 128 nums)   → wrap in outer array → [[...]]
+ *   - { embeddings: number[][] }   → extract the array
+ *   - { studentId, embeddings }    → extract the array (the old bad format)
+ *   - null / undefined             → null
+ */
+const normalizeFaceEmbedding = (raw) => {
+  if (raw === null || raw === undefined) return null
+
+  // Already deserialized string → parse first
+  const value = typeof raw === 'string' ? JSON.parse(raw) : raw
+
+  // Object format: { embeddings: [...], ... }
+  if (!Array.isArray(value) && value !== null && typeof value === 'object' && Array.isArray(value.embeddings)) {
+    return value.embeddings.map((row) => row.map(Number))
+  }
+
+  // Flat array of numbers → single embedding sample
+  if (Array.isArray(value) && typeof value[0] === 'number') {
+    return [value.map(Number)]
+  }
+
+  // Array of arrays
+  if (Array.isArray(value) && Array.isArray(value[0])) {
+    return value.map((row) => row.map(Number))
+  }
+
+  return null
+}
+
 export const updateStudent = async (
   studentId,
   { name, rollNumber, department, year, faceEmbedding },
@@ -213,11 +246,14 @@ export const updateStudent = async (
   student.rollNumber = rollNumber ?? student.rollNumber ?? student.roll
   student.department = department ?? student.department ?? ''
   student.year = year ?? student.year ?? ''
-  student.faceEmbedding = faceEmbedding ?? student.faceEmbedding ?? null
+  student.faceEmbedding = faceEmbedding !== undefined
+    ? normalizeFaceEmbedding(faceEmbedding)
+    : student.faceEmbedding ?? null
 
   await updateRow('Students', index, student)
   return student
 }
+
 
 export const deleteStudent = async (studentId) => {
   const students = await readStudents()
